@@ -63,7 +63,7 @@ async function embedFromUrl(url: string): Promise<number[]> {
   const img = await loadImage(url);
   const embedder = await getEmbedder();
   const res: ImageEmbedderResult = embedder.embed(img);
-  return Array.from(res.embeddings[0].floatEmbedding);
+  return Array.from(res.embeddings[0].floatEmbedding as any);
 }
 
 /** 0~100 (%) */
