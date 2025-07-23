@@ -6,12 +6,9 @@ export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
-    const { name, prompt, dataUrl } = await req.json();
+    const { name, prompt, dataUrl, similarity } = await req.json();
 
-    if (!dataUrl?.startsWith('data:image'))
-      throw new Error('dataUrl is invalid');
-
-    const similarity = Math.floor(Math.random() * 101); // TODO: mediapipe로 교체
+    if (!dataUrl?.startsWith('data:image')) throw new Error('dataUrl invalid');
 
     const user =
       (await prisma.user.findFirst({ where: { name } })) ??
@@ -21,14 +18,14 @@ export async function POST(req: Request) {
       data: {
         prompt,
         imageUrl: dataUrl,
-        similarity,
+        similarity: typeof similarity === 'number' ? similarity : 0,
         userId: user.id,
       },
     });
 
     return NextResponse.json({ ok: true, id: result.id });
   } catch (e) {
-    console.error('[api/generate-save]', e);
+    console.error('[api/save]', e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

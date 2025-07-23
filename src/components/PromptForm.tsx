@@ -7,6 +7,7 @@ import FullScreenLoader from '@/components/FullScreenLoader';
 import { setCookie } from 'cookies-next';
 
 const MAX_LEN = 100;
+const ORIGINAL = '/dev-image.png';
 
 export default function PromptForm() {
   const [username, setUsername] = useState('');
@@ -21,7 +22,7 @@ export default function PromptForm() {
 
     setLoading(true);
     try {
-      // 1) 이미지 생성
+      // 1) 이미지 생성 (서버)
       const genRes = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -35,19 +36,22 @@ export default function PromptForm() {
         throw new Error('invalid dataUrl');
       }
 
-      // 2) 저장
+      // 2) Mediapipe 유사도 계산 (클라이언트)
+      const { calcSimilarityPercent } = await import('@/lib/similarity');
+      const s = await calcSimilarityPercent('/dev-image.png', dataUrl);
+
       const saveRes = await fetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: username, prompt, dataUrl }),
+        body: JSON.stringify({ name: username, prompt, dataUrl, similarity: s }),
       });
       const saveJson = await saveRes.json();
       if (!saveJson.ok) throw new Error(saveJson.error || 'save fail');
 
-      // 쿠키 저장
+      // 이름 쿠키
       setCookie('username', username, { maxAge: 60 * 60 * 24 * 365 });
 
-      // 3) 결과 페이지로 이동
+      // 4) 결과 페이지 이동
       router.push(`/result?id=${saveJson.id}`);
     } catch (err: any) {
       console.error(err);

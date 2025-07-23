@@ -12,10 +12,22 @@ let embedderPromise: Promise<ImageEmbedder> | null = null;
 async function getEmbedder() {
   if (!embedderPromise) {
     embedderPromise = (async () => {
-      const filesetResolver = await FilesetResolver.forVisionTasks('/models');
-      return await ImageEmbedder.createFromOptions(filesetResolver, {
+      const fileset = await FilesetResolver.forVisionTasks('/models'); // wasm 경로
+      // 1) tflite 직접 로드
+      const modelUrl = '/models/mobilenet_v3_small.tflite'
+      const buf = await fetch(modelUrl).then(async (r) => {
+        const ab = await r.arrayBuffer();
+        // XML 방어 (404 등)
+        const head = new TextDecoder().decode(ab.slice(0, 30)).trim();
+        if (head.startsWith('<')) {
+          throw new Error('Model file is XML (wrong URL).');
+        }
+        return new Uint8Array(ab);
+      });
+
+      return await ImageEmbedder.createFromOptions(fileset, {
         baseOptions: {
-          modelAssetPath: '/models/image_embedder.task',
+          modelAssetBuffer: buf,
         },
         runningMode: 'IMAGE',
         quantize: false,
@@ -25,23 +37,16 @@ async function getEmbedder() {
   return embedderPromise;
 }
 
-function cosineSimilarity(a: Float32Array | number[], b: Float32Array | number[]) {
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
+function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array) {
+  let dot = 0,
+    na = 0,
+    nb = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];
   }
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
-
-async function embedFromUrl(url: string): Promise<number[]> {
-  const img = await loadImage(url);
-  const embedder = await getEmbedder();
-  const res: ImageEmbedderResult = embedder.embed(img);
-  return Array.from(res.embeddings[0].floatEmbedding);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -54,11 +59,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/**
- * 두 이미지 URL을 받아 0~100 사이 유사도(%) 리턴
- */
-export async function calcSimilarityPercent(originalUrl: string, generatedUrl: string): Promise<number> {
+async function embedFromUrl(url: string): Promise<number[]> {
+  const img = await loadImage(url);
+  const embedder = await getEmbedder();
+  const res: ImageEmbedderResult = embedder.embed(img);
+  return Array.from(res.embeddings[0].floatEmbedding);
+}
+
+/** 0~100 (%) */
+export async function calcSimilarityPercent(originalUrl: string, generatedUrl: string) {
   const [e1, e2] = await Promise.all([embedFromUrl(originalUrl), embedFromUrl(generatedUrl)]);
   const cos = cosineSimilarity(e1, e2);
-  return Math.round(((cos + 1) / 2) * 100); // -1~1 -> 0~100
+  return Math.round(((cos + 1) / 2) * 100);
 }
